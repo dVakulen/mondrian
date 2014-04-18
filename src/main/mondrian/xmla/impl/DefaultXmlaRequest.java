@@ -20,6 +20,7 @@ import mondrian.olap.type.StringType;
 import mondrian.olap.type.Type;
 import mondrian.xmla.*;
 
+import org.apache.commons.lang.StringUtils;
 import org.apache.log4j.Logger;
 
 import org.w3c.dom.*;
@@ -421,8 +422,10 @@ public class DefaultXmlaRequest
                 HSB_BAD_STATEMENT_FAULT_FS,
                 Util.newError(buf.toString()));
         }
-        statement = XmlaUtil.textInElement(childElems[0]).replaceAll("\\r", "");
-        drillthrough = statement.toUpperCase().indexOf("DRILLTHROUGH") != -1;
+
+        statement = XmlaUtil.textInElement(childElems[0]).replaceAll("\\r", "").trim();
+        statement = StringUtils.strip(statement, "; \n\t");
+        drillthrough = statement.toUpperCase().contains("DRILLTHROUGH");
     }
 
     private List<Parameter> parseParameters(Element parametersElement)
