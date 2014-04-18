@@ -441,7 +441,7 @@ public class SqlConstraintUtils {
           } else {
               // Extract the list of members
               Iterator <Member> evaluatedSet =
-                  getSetFromCalculatedMember(evaluator, member);
+                  getSetFromCalculatedMemberExpression(evaluator, fun);
               while (evaluatedSet.hasNext()) {
                   listOfMembers.add(evaluatedSet.next());
               }
@@ -521,14 +521,10 @@ public class SqlConstraintUtils {
       return false;
     }
 
-    public static Iterator<Member> getSetFromCalculatedMember(
-        Evaluator evaluator,
-        Member member)
+    public static Iterator<Member> getSetFromCalculatedMemberExpression(
+            Evaluator evaluator,
+            ResolvedFunCall fun)
     {
-        assert member.getExpression() instanceof ResolvedFunCall;
-
-        ResolvedFunCall fun = (ResolvedFunCall) member.getExpression();
-
         // Calling the main set evaluator to extend this.
         Exp exp = fun.getArg(0);
         TupleIterable tupleIterable =
