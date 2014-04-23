@@ -451,12 +451,12 @@ public class SqlConstraintUtils {
           if (!m.isCalculated()) {
             listOfMembers.add(m);
           } else {
-            listOfMembers.addAll(expandExpressions(member, m.getExpression(), evaluator));
+            listOfMembers.addAll(expandExpressions(m, m.getExpression(), evaluator));
           }
         } else if (expression instanceof Literal) {
           // do nothing, no member to track
         } else {
-            listOfMembers.add(member);
+             listOfMembers.add(member);
         }
         return listOfMembers;
     }
@@ -476,7 +476,6 @@ public class SqlConstraintUtils {
     public static boolean isSupportedExpressionForCalculatedMember(
         final Exp expression)
     {
-
       if (expression instanceof ResolvedFunCall) {
           ResolvedFunCall fun = (ResolvedFunCall) expression;
 
@@ -522,8 +521,8 @@ public class SqlConstraintUtils {
     }
 
     public static Iterator<Member> getSetFromCalculatedMemberExpression(
-            Evaluator evaluator,
-            ResolvedFunCall fun)
+        Evaluator evaluator,
+        ResolvedFunCall fun)
     {
         // Calling the main set evaluator to extend this.
         Exp exp = fun.getArg(0);
