@@ -602,8 +602,8 @@ public class FunctionTest extends FoodMartTestCase {
 
     public void testIffCrossjoin() {
       assertQueryReturns(
-          "SELECT CrossJoin(" +
-          "Iif(1=1, [Store].[USA].[WA].children, [Store].[USA].[CA].children), [Time].[1997].Children)\n"
+          "SELECT CrossJoin("
+          + "Iif(1=1, [Store].[USA].[WA].children, [Store].[USA].[CA].children), [Time].[1997].Children)\n"
           + " on columns\n"
           + "FROM Sales",
           "Axis #0:\n"
@@ -665,7 +665,6 @@ public class FunctionTest extends FoodMartTestCase {
           + "Row #0: 2,860\n"
           + "Row #0: 2,450\n"
           + "Row #0: 3,085\n");
-
     }
 
     public void testIsEmptyQuery() {
@@ -6306,7 +6305,7 @@ public class FunctionTest extends FoodMartTestCase {
     public void testPropertiesWithTYPED() {
         assertExprReturns(
             "[Store].[USA].[CA].[Beverly Hills].[Store 6].Properties(\"Store Type\", TYPED)",
-            "Gourmet Supermarket");    
+            "Gourmet Supermarket");
     }
 
     public void testPropertiesExpr() {
@@ -12945,50 +12944,6 @@ Intel platforms):
         }
     }
 
-    public void testLinkMember() throws Exception {
-        // apart from weekly having an all member,
-        // time and weekly hierarchies are equivalent up to year
-        assertAxisReturns(
-            "LinkMember([Time].[1997], " + TimeWeekly + ")",
-            "[Time].[Weekly].[1997]");
-    }
-
-    public void testLinkMemberAll() throws Exception {
-        // apart from weekly having an all member,
-        // time and weekly hierarchies are equivalent up to year
-        assertAxisReturns(
-            "LinkMember([Gender].[All Gender], [Product])",
-            "[Product].[All Products]");
-    }
-
-    public void testLinkMemberDims() throws Exception {
-        String doubleTimeCube =
-            "<Cube name=\"SalesTime\">\n"
-            + "  <Table name=\"sales_fact_1997\"/>\n"
-            + "  <DimensionUsage source=\"Time\" name=\"Time\" visible=\"true\" foreignKey=\"time_id\"/>\n"
-            + "  <DimensionUsage source=\"Time\" name=\"SecondTime\" visible=\"true\" foreignKey=\"time_id\"/>\n"
-            + "  <Measure name=\"Unit Sales\" column=\"unit_sales\" aggregator=\"sum\"/>"
-            + "</Cube>";
-        TestContext testContext = getTestContext().create(
-            null,
-            doubleTimeCube,
-            null,
-            null,
-            null,
-            null);
-        testContext.withCube("SalesTime").assertAxisReturns(
-            "LinkMember([Time].[1997].[Q1].[2], [SecondTime])",
-            "[SecondTime].[1997].[Q1].[2]");
-    }
-
-    public void testLinkMemberType() {
-        // ensure it declares the right hierarchy return type
-        assertAxisReturns(
-            "CrossJoin([Time].[1997], LinkMember([Time].[1997], "
-            + TimeWeekly + "))",
-            "{[Time].[1997], [Time].[Weekly].[1997]}");
-    }
-
     public void testExisting() throws Exception {
         // basic test
         assertQueryReturns(
@@ -13140,6 +13095,37 @@ Intel platforms):
             + "{[Product].[Non-Consumable]}\n"
             + "Row #0: 266,773\n"
             + "Row #0: 50,236\n");
+    }
+
+    /**
+     * This issue demonstrates the problem.  Note that if
+     * [Measures].[Unit Sales] is used, which happens to be the default
+     * measure, this query returns expected results.  There seems to be some
+     * behavior in FunUtil.existsInTuple() that shouldn't be there.
+     */
+    public void testExistingWithCalcMember() {
+        assertQueryReturns(
+            "with \n"
+            + "  member [Product].[All Products].[WithExisting] as 'Aggregate(Existing [Product].[Drink])'\n"
+            + "  member [Product].[All Products].[WithoutExisting] as 'Aggregate([Product].[Drink])'\n"
+            + "  select {[Product].[Product Family].AllMembers} on 0,\n"
+            + "  [Measures].[Store Sales] on 1\n"
+            + "  from [Sales]",
+            "Axis #0:\n"
+            + "{}\n"
+            + "Axis #1:\n"
+            + "{[Product].[Drink]}\n"
+            + "{[Product].[Food]}\n"
+            + "{[Product].[Non-Consumable]}\n"
+            + "{[Product].[All Products].[WithExisting]}\n"
+            + "{[Product].[All Products].[WithoutExisting]}\n"
+            + "Axis #2:\n"
+            + "{[Measures].[Store Sales]}\n"
+            + "Row #0: 48,836.21\n"
+            + "Row #0: 409,035.59\n"
+            + "Row #0: 107,366.33\n"
+            + "Row #0: 48,836.21\n"
+            + "Row #0: 48,836.21\n");
     }
 
     public void testNonEmptyFunSlicer() {
