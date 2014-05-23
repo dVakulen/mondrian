@@ -802,12 +802,22 @@ level.members and member descendants will be computed in SQL.</p>
         <Type>boolean</Type>
         <Default>true</Default>
     </PropertyDefinition>
-        <PropertyDefinition>
+    <PropertyDefinition>
         <Name>EnableNativeCount</Name>
         <Path>mondrian.native.count.enable</Path>
         <Category>SQL generation</Category>
         <Description>
 <p>If enabled, some Count() calls will be computed in SQL.</p>
+        </Description>
+        <Type>boolean</Type>
+        <Default>true</Default>
+    </PropertyDefinition>
+    <PropertyDefinition>
+        <Name>EnableNativeExisting</Name>
+        <Path>mondrian.native.existing.enable</Path>
+        <Category>SQL generation</Category>
+        <Description>
+<p>If enabled, some Existing calls will be computed in SQL.</p>
         </Description>
         <Type>boolean</Type>
         <Default>true</Default>
@@ -1383,16 +1393,6 @@ how member key segments are looked up by default (when no level specified).</p>
 
 <p>If true, using a key on a hierarchy look into the top level,
 otherwise looks at the bottom level.</p>
-        </Description>
-        <Type>boolean</Type>
-        <Default>false</Default>
-    </PropertyDefinition>
-    <PropertyDefinition>
-        <Name>XmlaFullHierarchyNames</Name>
-        <Path>mondrian.xmla.FullHierarchyNames</Path>
-        <Description>
-<p>(Deprecated) If true and SSasCompatibleNaming=true, hierarchy names will include dimension even if names are equal.</p>
-<p>This only affects Xmla layer.</p>
         </Description>
         <Type>boolean</Type>
         <Default>false</Default>
