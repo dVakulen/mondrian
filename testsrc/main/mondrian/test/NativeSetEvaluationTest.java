@@ -687,8 +687,8 @@ public class NativeSetEvaluationTest extends BatchTestCase {
     }
 
     /**
-     * Check if getSlicerMembers in native evaluation context
-     * doesn't break the results as in MONDRIAN-1187
+     * Partial crossjoin cannot be nativized correctly
+     * see MONDRIAN-1187, MONDRIAN-1861
      */
     public void testSlicerTuplesPartialCrossJoin() {
         final String mdx =
@@ -710,10 +710,10 @@ public class NativeSetEvaluationTest extends BatchTestCase {
             + "Axis #1:\n"
             + "{[Measures].[Store Sales]}\n"
             + "Axis #2:\n"
-            + "{[Product].[Food].[Eggs].[Eggs].[Eggs].[Urban].[Urban Small Eggs]}\n"
-            + "{[Product].[Food].[Produce].[Vegetables].[Fresh Vegetables].[Hermanos].[Hermanos Green Pepper]}\n"
-            + "Row #0: 332.86\n"
-            + "Row #1: 343.54\n";
+            + "{[Product].[Food].[Snack Foods].[Snack Foods].[Dried Fruit].[Fort West].[Fort West Raspberry Fruit Roll]}\n"
+            + "{[Product].[Food].[Canned Foods].[Canned Soup].[Soup].[Bravo].[Bravo Noodle Soup]}\n"
+            + "Row #0: 372.36\n"
+            + "Row #1: 365.20\n";
 
         assertQueryReturns(mdx, result);
     }
@@ -1422,6 +1422,8 @@ public class NativeSetEvaluationTest extends BatchTestCase {
               + "    `agg_c_14_sales_fact_1997`.`store_id` = `store`.`store_id`\n"
               + "and\n"
               + "    `agg_c_14_sales_fact_1997`.`the_year` = 1997\n"
+              + "and\n"
+              + "    `agg_c_14_sales_fact_1997`.`store_sales` is not null\n"
               + "group by\n"
               + "    `store`.`store_country`,\n"
               + "    `store`.`store_state`,\n"
@@ -1444,6 +1446,8 @@ public class NativeSetEvaluationTest extends BatchTestCase {
             + "    `sales_fact_1997`.`time_id` = `time_by_day`.`time_id`\n"
             + "and\n"
             + "    `time_by_day`.`the_year` = 1997\n"
+            + "and\n"
+            + "    `sales_fact_1997`.`store_sales` is not null\n"
             + "group by\n"
             + "    `store`.`store_country`,\n"
             + "    `store`.`store_state`,\n"
@@ -1503,6 +1507,8 @@ public class NativeSetEvaluationTest extends BatchTestCase {
             + "    (`customer`.`gender` = 'F')\n"
             + "and\n"
             + "    (`customer`.`marital_status` = 'S')\n"
+            + "and\n"
+            + "    `agg_l_03_sales_fact_1997`.`store_sales` is not null\n"
             + "group by\n"
             + "    `customer`.`country`,\n"
             + "    `customer`.`state_province`,\n"
@@ -1545,6 +1551,8 @@ public class NativeSetEvaluationTest extends BatchTestCase {
             + "    (`customer`.`gender` = 'F')\n"
             + "and\n"
             + "    (`customer`.`marital_status` = 'S')\n"
+            + "and\n"
+            + "    `sales_fact_1997`.`store_sales` is not null\n"
             + "group by\n"
             + "    `customer`.`country`,\n"
             + "    `customer`.`state_province`,\n"
@@ -1619,14 +1627,16 @@ public class NativeSetEvaluationTest extends BatchTestCase {
                         + "    `store` as `store`,\n"
                         + "    `sales_fact_1997` as `sales_fact_1997`,\n"
                         + "    `time_by_day` as `time_by_day`,\n"
-                        + "    `product` as `product`,\n"
-                        + "    `product_class` as `product_class`\n"
+                        + "    `product_class` as `product_class`,\n"
+                        + "    `product` as `product`\n"
                         + "where\n"
                         + "    `sales_fact_1997`.`store_id` = `store`.`store_id`\n"
                         + "and\n"
                         + "    `sales_fact_1997`.`time_id` = `time_by_day`.`time_id`\n"
                         + "and\n"
                         + "    `time_by_day`.`the_year` = 1997\n"
+                        + "and\n"
+                        + "    `sales_fact_1997`.`product_id` = `product`.`product_id`\n"
                         + "and\n"
                         + "    `product`.`product_class_id` = `product_class`.`product_class_id`\n"
                         + "and\n"
@@ -1917,6 +1927,77 @@ public class NativeSetEvaluationTest extends BatchTestCase {
           + "Row #0: 131,558\n");
     }
 
+    public void testNativeFilterWithTupleAndVal() {
+        propSaver.set(propSaver.properties.GenerateFormattedSql, true);
+
+        final boolean useAgg =
+            MondrianProperties.instance().UseAggregates.get()
+            && MondrianProperties.instance().ReadAggregates.get();
+
+        String mdx =
+            "WITH MEMBER [Gender].[All Gender].[60] AS [Gender].[All Gender], solve_order=10\n"
+            + "   MEMBER [Measures].[Sales Filtered] AS SUM(Filter(EXISTING [Product].[Product Name].Members, ([Gender].[All Gender], [Measures].[Unit Sales]) > Val([Gender].CurrentMember.Name)), [Measures].[Unit Sales]), solve_order=20\n"
+            + "SELECT {[Measures].[Sales Filtered]} on 0 FROM [Sales] WHERE ([Time].[1997].[Q1], [Gender].[All Gender].[60])";
+
+        String mysqlQuery =
+            "select\n"
+            + "    sum(`m1`)\n"
+            + "from\n"
+            + "    (select\n"
+            + "    `product_class`.`product_family` as `c0`,\n"
+            + "    `product_class`.`product_department` as `c1`,\n"
+            + "    `product_class`.`product_category` as `c2`,\n"
+            + "    `product_class`.`product_subcategory` as `c3`,\n"
+            + "    `product`.`brand_name` as `c4`,\n"
+            + "    `product`.`product_name` as `c5`,\n"
+            + "    sum(`sales_fact_1997`.`unit_sales`) as `m1`\n"
+            + "from\n"
+            + "    `product` as `product`,\n"
+            + "    `product_class` as `product_class`,\n"
+            + "    `sales_fact_1997` as `sales_fact_1997`,\n"
+            + "    `time_by_day` as `time_by_day`\n"
+            + "where\n"
+            + "    `product`.`product_class_id` = `product_class`.`product_class_id`\n"
+            + "and\n"
+            + "    `sales_fact_1997`.`product_id` = `product`.`product_id`\n"
+            + "and\n"
+            + "    `sales_fact_1997`.`time_id` = `time_by_day`.`time_id`\n"
+            + "and\n"
+            + "    `time_by_day`.`the_year` = 1997\n"
+            + "and\n"
+            + "    `time_by_day`.`quarter` = 'Q1'\n"
+            + "group by\n"
+            + "    `product_class`.`product_family`,\n"
+            + "    `product_class`.`product_department`,\n"
+            + "    `product_class`.`product_category`,\n"
+            + "    `product_class`.`product_subcategory`,\n"
+            + "    `product`.`brand_name`,\n"
+            + "    `product`.`product_name`\n"
+            + "having\n"
+            + "    (sum(`sales_fact_1997`.`unit_sales`) > 60.0)\n"
+            + "order by\n"
+            + "    ISNULL(`product_class`.`product_family`) ASC, `product_class`.`product_family` ASC,\n"
+            + "    ISNULL(`product_class`.`product_department`) ASC, `product_class`.`product_department` ASC,\n"
+            + "    ISNULL(`product_class`.`product_category`) ASC, `product_class`.`product_category` ASC,\n"
+            + "    ISNULL(`product_class`.`product_subcategory`) ASC, `product_class`.`product_subcategory` ASC,\n"
+            + "    ISNULL(`product`.`brand_name`) ASC, `product`.`brand_name` ASC,\n"
+            + "    ISNULL(`product`.`product_name`) ASC, `product`.`product_name` ASC) as `sumQuery`";
+
+        if (!useAgg && MondrianProperties.instance().EnableNativeCount.get()) {
+            SqlPattern mysqlPattern =
+                new SqlPattern(Dialect.DatabaseProduct.MYSQL, mysqlQuery, null);
+            assertQuerySql(getTestContext(), mdx, new SqlPattern[]{mysqlPattern});
+        }
+
+        assertQueryReturns(
+            mdx,
+            "Axis #0:\n"
+            + "{[Time].[1997].[Q1], [Gender].[All Gender].[60]}\n"
+            + "Axis #1:\n"
+            + "{[Measures].[Sales Filtered]}\n"
+            + "Row #0: 8,050\n");
+    }
+
     /**
      * This tests a scenario where a calculated member still allows nonempty
      * native evaluation with a literal.
@@ -1974,6 +2055,8 @@ public class NativeSetEvaluationTest extends BatchTestCase {
             + "    `product_class`.`product_family` = 'Non-Consumable'\n"
             + "and\n"
             + "    `customer`.`marital_status` = 'S'\n"
+            + "and\n"
+            + "    `sales_fact_1997`.`unit_sales` is not null\n"
             + "group by\n"
             + "    `customer`.`customer_id`\n"
             + "order by\n"
@@ -2068,6 +2151,8 @@ public class NativeSetEvaluationTest extends BatchTestCase {
           + "    `product_class`.`product_family` = 'Non-Consumable'\n"
           + "and\n"
           + "    `customer`.`marital_status` = 'S'\n"
+          + "and\n"
+          + "    `sales_fact_1997`.`unit_sales` is not null\n"
           + "group by\n"
           + "    `customer`.`customer_id`\n"
           + "order by\n"
@@ -2640,7 +2725,8 @@ public class NativeSetEvaluationTest extends BatchTestCase {
           getTestContext().flushSchemaCache();
           SqlPattern mysqlPattern =
               new SqlPattern(Dialect.DatabaseProduct.MYSQL, mysqlQuery, null);
-          assertQuerySql(TestContext.instance(), mdx, new SqlPattern[]{mysqlPattern});
+          assertQuerySql(TestContext.instance().withFreshConnection(), mdx,
+              new SqlPattern[]{mysqlPattern});
       }
 
       assertQueryReturns(
@@ -2845,6 +2931,56 @@ public class NativeSetEvaluationTest extends BatchTestCase {
         assertQuerySql(mdx, new SqlPattern[]{mysqlPattern});
     }
 
+    /**
+     * This test demonstrates complex interaction between member calcs and a compound slicer 
+     */
+    public void testOverridingCompoundFilter() {
+        String mdx =
+            "WITH MEMBER [Gender].[All Gender].[NoSlicer] AS '([Product].[All Products], [Time].[1997])', solve_order=1000\n "
+            + "MEMBER [Measures].[TotalVal] AS 'Aggregate(Filter({[Store].[Store City].members},[Measures].[Unit Sales] < 2300)), solve_order=900'\n"
+            + "SELECT {[Measures].[TotalVal], [Measures].[Unit Sales]} on 0, {[Gender].[All Gender], [Gender].[All Gender].[NoSlicer]} on 1 from [Sales]\n"
+            + "WHERE {([Product].[Non-Consumable], [Time].[1997].[Q1]),([Product].[Drink], [Time].[1997].[Q2])}";
+
+        TestContext context = getTestContext().withFreshConnection();
+        context.assertQueryReturns(
+            mdx,
+            "Axis #0:\n"
+            + "{[Product].[Non-Consumable], [Time].[1997].[Q1]}\n"
+            + "{[Product].[Drink], [Time].[1997].[Q2]}\n"
+            + "Axis #1:\n"
+            + "{[Measures].[TotalVal]}\n"
+            + "{[Measures].[Unit Sales]}\n"
+            + "Axis #2:\n"
+            + "{[Gender].[All Gender]}\n"
+            + "{[Gender].[All Gender].[NoSlicer]}\n"
+            + "Row #0: 12,730\n"
+            + "Row #0: 18,401\n"
+            + "Row #1: 6,557\n"
+            + "Row #1: 266,773\n");
+
+        mdx =
+            "WITH MEMBER [Gender].[All Gender].[SomeSlicer] AS '([Product].[All Products])', solve_order=1000\n "
+            + "MEMBER [Measures].[TotalVal] AS 'Aggregate(Filter({[Store].[Store City].members},[Measures].[Unit Sales] < 2700)), solve_order=900'\n"
+            + "SELECT {[Measures].[TotalVal], [Measures].[Unit Sales]} on 0, {[Gender].[All Gender], [Gender].[All Gender].[SomeSlicer]} on 1 from [Sales]\n"
+            + "WHERE {([Product].[Non-Consumable], [Time].[1997].[Q1]),([Product].[Drink], [Time].[1997].[Q2])}";
+
+        context.assertQueryReturns(
+            mdx,
+            "Axis #0:\n"
+            + "{[Product].[Non-Consumable], [Time].[1997].[Q1]}\n"
+            + "{[Product].[Drink], [Time].[1997].[Q2]}\n"
+            + "Axis #1:\n"
+            + "{[Measures].[TotalVal]}\n"
+            + "{[Measures].[Unit Sales]}\n"
+            + "Axis #2:\n"
+            + "{[Gender].[All Gender]}\n"
+            + "{[Gender].[All Gender].[SomeSlicer]}\n"
+            + "Row #0: 15,056\n"
+            + "Row #0: 18,401\n"
+            + "Row #1: 3,045\n"
+            + "Row #1: 128,901\n");
+    }
+
     public void testNativeFilterWithCompoundSlicerCJ() {
         String mdx =
             "WITH MEMBER [Measures].[TotalVal] AS 'Aggregate(Filter( {[Store].[Store City].members},[Measures].[Unit Sales] > 1000))'\n"
@@ -2905,7 +3041,7 @@ public class NativeSetEvaluationTest extends BatchTestCase {
             + "Row #0: 53\n");
     }
 
-    public void _testNativeFilterTupleCompoundSlicer1861() {
+    public void testNativeFilterTupleCompoundSlicer1861() {
         // Using a slicer list instead of tuples causes slicers with
         // tuples where not all combinations of their members are present to
         // fail when nativized.
@@ -2922,5 +3058,239 @@ public class NativeSetEvaluationTest extends BatchTestCase {
             + "Row #0: 12,334\n");
     }
 
+    public void testNativeCountFilterExistingScenario() {
+        final boolean useAgg =
+            MondrianProperties.instance().UseAggregates.get()
+            && MondrianProperties.instance().ReadAggregates.get();
+        propSaver.set(propSaver.properties.GenerateFormattedSql, true);
+
+        String mdx =
+            "WITH MEMBER [Measures].[WithExisting] AS Count(Filter(Existing [Product].[Product Name].Members, 1=1))\n"
+            + "MEMBER [Measures].[WithoutExisting] AS Count(Filter([Product].[Product Name].Members, 1=1))\n"
+            + "SELECT {[Measures].[WithExisting], [Measures].[WithoutExisting]} ON 0, {[Time].[1997], [Time].[1997].[Q4].[12]} ON 1 FROM [Sales] WHERE [Product].[Non-Consumable]";
+
+        String mysqlQuery =
+            "select\n"
+            + "    COUNT(*)\n"
+            + "from\n"
+            + "    (select\n"
+            + "    `product_class`.`product_family` as `c0`,\n"
+            + "    `product_class`.`product_department` as `c1`,\n"
+            + "    `product_class`.`product_category` as `c2`,\n"
+            + "    `product_class`.`product_subcategory` as `c3`,\n"
+            + "    `product`.`brand_name` as `c4`,\n"
+            + "    `product`.`product_name` as `c5`\n"
+            + "from\n"
+            + "    `product` as `product`,\n"
+            + "    `product_class` as `product_class`,\n"
+            + "    `sales_fact_1997` as `sales_fact_1997`,\n"
+            + "    `time_by_day` as `time_by_day`\n"
+            + "where\n"
+            + "    `product`.`product_class_id` = `product_class`.`product_class_id`\n"
+            + "and\n"
+            + "    `sales_fact_1997`.`product_id` = `product`.`product_id`\n"
+            + "and\n"
+            + "    `sales_fact_1997`.`time_id` = `time_by_day`.`time_id`\n"
+            + "and\n"
+            + "    `time_by_day`.`the_year` = 1997\n"
+            + "and\n"
+            + "    `time_by_day`.`quarter` = 'Q4'\n"
+            + "and\n"
+            + "    `time_by_day`.`month_of_year` = 12\n"
+            + "and\n"
+            + "    `product_class`.`product_family` = 'Non-Consumable'\n"
+            + "group by\n"
+            + "    `product_class`.`product_family`,\n"
+            + "    `product_class`.`product_department`,\n"
+            + "    `product_class`.`product_category`,\n"
+            + "    `product_class`.`product_subcategory`,\n"
+            + "    `product`.`brand_name`,\n"
+            + "    `product`.`product_name`\n"
+            + "having\n"
+            + "    (1 = 1)\n"
+            + "order by\n"
+            + "    ISNULL(`product_class`.`product_family`) ASC, `product_class`.`product_family` ASC,\n"
+            + "    ISNULL(`product_class`.`product_department`) ASC, `product_class`.`product_department` ASC,\n"
+            + "    ISNULL(`product_class`.`product_category`) ASC, `product_class`.`product_category` ASC,\n"
+            + "    ISNULL(`product_class`.`product_subcategory`) ASC, `product_class`.`product_subcategory` ASC,\n"
+            + "    ISNULL(`product`.`brand_name`) ASC, `product`.`brand_name` ASC,\n"
+            + "    ISNULL(`product`.`product_name`) ASC, `product`.`product_name` ASC) as `countQuery`";
+
+        if (!useAgg && (MondrianProperties.instance().EnableNativeCount.get()
+            && MondrianProperties.instance().EnableNativeFilter.get()
+            && MondrianProperties.instance().EnableNativeExisting.get()))
+        {
+            getTestContext().flushSchemaCache();
+            SqlPattern mysqlPattern =
+                new SqlPattern(Dialect.DatabaseProduct.MYSQL, mysqlQuery, null);
+            assertQuerySql(TestContext.instance(), mdx, new SqlPattern[]{mysqlPattern});
+        }
+
+        assertQueryReturns(mdx,
+            "Axis #0:\n"
+            + "{[Product].[Non-Consumable]}\n"
+            + "Axis #1:\n"
+            + "{[Measures].[WithExisting]}\n"
+            + "{[Measures].[WithoutExisting]}\n"
+            + "Axis #2:\n"
+            + "{[Time].[1997]}\n"
+            + "{[Time].[1997].[Q4].[12]}\n"
+            + "Row #0: 295\n"
+            + "Row #0: 1,560\n"
+            + "Row #1: 294\n"
+            + "Row #1: 1,560\n");
+    }
+
+    // Similar to MDX found in this article: http://www.bp-msbi.com/2012/02/what-exists-and-what-is-empty-in-mdx/
+    public void testExistingNonEmptyScenario() {
+        propSaver.set(MondrianProperties.instance().EnableNativeCount, false);
+        propSaver.set(MondrianProperties.instance().EnableNativeNonEmptyFunction, true);
+        String mdx =
+            "WITH MEMBER [Measures].[Existing Test 1] AS Count(NonEmpty([Time].[Month].Members))\n"
+            + "MEMBER [Measures].[Existing Test 2] AS Count(Existing NonEmpty([Time].[Month].Members))\n"
+            + "SELECT {[Measures].[Existing Test 1],[Measures].[Existing Test 2]} ON 0, {[Time].[1997].[Q1]} ON 1 FROM [Sales]";
+        assertQueryReturns(mdx,
+            "Axis #0:\n"
+            + "{}\n"
+            + "Axis #1:\n"
+            + "{[Measures].[Existing Test 1]}\n"
+            + "{[Measures].[Existing Test 2]}\n"
+            + "Axis #2:\n"
+            + "{[Time].[1997].[Q1]}\n"
+            + "Row #0: 12\n"
+            + "Row #0: 3\n");
+        // a slight variation on the NonEmpty function
+        mdx =
+            "WITH MEMBER [Measures].[Existing Test 1] AS Count(NonEmpty([Time].[Month].Members, {[Measures].[Unit Sales], [Measures].[Store Sales]}))\n"
+            + "MEMBER [Measures].[Existing Test 2] AS Count(Existing NonEmpty([Time].[Month].Members, {[Measures].[Unit Sales], [Measures].[Store Sales]}))\n"
+            + "SELECT {[Measures].[Existing Test 1],[Measures].[Existing Test 2]} ON 0, {[Time].[1997].[Q1]} ON 1 FROM [Sales]";
+        assertQueryReturns(mdx,
+            "Axis #0:\n"
+            + "{}\n"
+            + "Axis #1:\n"
+            + "{[Measures].[Existing Test 1]}\n"
+            + "{[Measures].[Existing Test 2]}\n"
+            + "Axis #2:\n"
+            + "{[Time].[1997].[Q1]}\n"
+            + "Row #0: 12\n"
+            + "Row #0: 3\n");
+        propSaver.set(MondrianProperties.instance().GenerateFormattedSql, true);
+        String sql = isUseAgg()
+            ? "select\n"
+            + "    `agg_c_10_sales_fact_1997`.`the_year` as `c0`,\n"
+            + "    `agg_c_10_sales_fact_1997`.`quarter` as `c1`,\n"
+            + "    `agg_c_10_sales_fact_1997`.`month_of_year` as `c2`\n"
+            + "from\n"
+            + "    `agg_c_10_sales_fact_1997` as `agg_c_10_sales_fact_1997`\n"
+            + "where\n"
+            + "    (`agg_c_10_sales_fact_1997`.`unit_sales` is not null or `agg_c_10_sales_fact_1997`.`store_sales` is not null)\n"
+            + "group by\n"
+            + "    `agg_c_10_sales_fact_1997`.`the_year`,\n"
+            + "    `agg_c_10_sales_fact_1997`.`quarter`,\n"
+            + "    `agg_c_10_sales_fact_1997`.`month_of_year`\n"
+            + "order by\n"
+            + "    ISNULL(`agg_c_10_sales_fact_1997`.`the_year`) ASC, `agg_c_10_sales_fact_1997`.`the_year` ASC,\n"
+            + "    ISNULL(`agg_c_10_sales_fact_1997`.`quarter`) ASC, `agg_c_10_sales_fact_1997`.`quarter` ASC,\n"
+            + "    ISNULL(`agg_c_10_sales_fact_1997`.`month_of_year`) ASC, `agg_c_10_sales_fact_1997`.`month_of_year` ASC"
+            :"select\n"
+            + "    `time_by_day`.`the_year` as `c0`,\n"
+            + "    `time_by_day`.`quarter` as `c1`,\n"
+            + "    `time_by_day`.`month_of_year` as `c2`\n"
+            + "from\n"
+            + "    `time_by_day` as `time_by_day`,\n"
+            + "    `sales_fact_1997` as `sales_fact_1997`\n"
+            + "where\n"
+            + "    `sales_fact_1997`.`time_id` = `time_by_day`.`time_id`\n"
+            + "and\n"
+            + "    (`sales_fact_1997`.`unit_sales` is not null or `sales_fact_1997`.`store_sales` is not null)\n"
+            + "group by\n"
+            + "    `time_by_day`.`the_year`,\n"
+            + "    `time_by_day`.`quarter`,\n"
+            + "    `time_by_day`.`month_of_year`\n"
+            + "order by\n"
+            + "    ISNULL(`time_by_day`.`the_year`) ASC, `time_by_day`.`the_year` ASC,\n"
+            + "    ISNULL(`time_by_day`.`quarter`) ASC, `time_by_day`.`quarter` ASC,\n"
+            + "    ISNULL(`time_by_day`.`month_of_year`) ASC, `time_by_day`.`month_of_year` ASC";
+        SqlPattern mysqlPattern =
+            new SqlPattern(Dialect.DatabaseProduct.MYSQL, sql,
+                sql.substring(0, sql.indexOf("where")));
+        assertQuerySql(mdx, new SqlPattern[]{mysqlPattern});
+    }
+
+    /**
+     * Added from the mainline:
+     * https://github.com/pentaho/mondrian/commit/eab9fbf7b44a7aa3da5d98539799a8937311d79a
+     * Verifies evergreen approach to resolving MONDRIAN-2081
+     */
+    public void testConstraintCacheIncludesMultiPositionSlicer() {
+        assertQueryReturns(
+            "select non empty [Customers].[USA].[WA].[Spokane].children  on 0, "
+            + "Time.[1997].[Q1].[1] * [Store].[USA].[WA].[Spokane] * Gender.F * [Marital Status].M on 1 from sales where\n"
+            + "{[Product].[Food].[Snacks].[Candy].[Gum].[Atomic].[Atomic Bubble Gum],\n"
+            + "[Product].[Food].[Snacks].[Candy].[Gum].[Choice].[Choice Bubble Gum]}",
+            "Axis #0:\n"
+            + "{[Product].[Food].[Snacks].[Candy].[Gum].[Atomic].[Atomic Bubble Gum]}\n"
+            + "{[Product].[Food].[Snacks].[Candy].[Gum].[Choice].[Choice Bubble Gum]}\n"
+            + "Axis #1:\n"
+            + "{[Customers].[USA].[WA].[Spokane].[David Cocadiz]}\n"
+            + "{[Customers].[USA].[WA].[Spokane].[Peter Von Breymann]}\n"
+            + "Axis #2:\n"
+            + "{[Time].[1997].[Q1].[1], [Store].[USA].[WA].[Spokane], [Gender].[F], [Marital Status].[M]}\n"
+            + "Row #0: 4\n"
+            + "Row #0: 3\n");
+        assertQueryReturns(
+            "select non empty [Customers].[USA].[WA].[Spokane].children on 0, "
+            + "Time.[1997].[Q1].[1] * [Store].[USA].[WA].[Spokane] * Gender.F *"
+            + "[Marital Status].M on 1 from sales where "
+            + "   { [Product].[Food], [Product].[Drink] }",
+            "Axis #0:\n"
+            + "{[Product].[Food]}\n"
+            + "{[Product].[Drink]}\n"
+            + "Axis #1:\n"
+            + "{[Customers].[USA].[WA].[Spokane].[Abbie Carlbon]}\n"
+            + "{[Customers].[USA].[WA].[Spokane].[Bob Alexander]}\n"
+            + "{[Customers].[USA].[WA].[Spokane].[Dauna Barton]}\n"
+            + "{[Customers].[USA].[WA].[Spokane].[David Cocadiz]}\n"
+            + "{[Customers].[USA].[WA].[Spokane].[David Hassard]}\n"
+            + "{[Customers].[USA].[WA].[Spokane].[Dawn Laner]}\n"
+            + "{[Customers].[USA].[WA].[Spokane].[Donna Weisinger]}\n"
+            + "{[Customers].[USA].[WA].[Spokane].[Fran McEvilly]}\n"
+            + "{[Customers].[USA].[WA].[Spokane].[James Horvat]}\n"
+            + "{[Customers].[USA].[WA].[Spokane].[John Lenorovitz]}\n"
+            + "{[Customers].[USA].[WA].[Spokane].[Linda Combs]}\n"
+            + "{[Customers].[USA].[WA].[Spokane].[Luther Moran]}\n"
+            + "{[Customers].[USA].[WA].[Spokane].[Martha Griego]}\n"
+            + "{[Customers].[USA].[WA].[Spokane].[Peter Von Breymann]}\n"
+            + "{[Customers].[USA].[WA].[Spokane].[Richard Callahan]}\n"
+            + "{[Customers].[USA].[WA].[Spokane].[Robert Vaughn]}\n"
+            + "{[Customers].[USA].[WA].[Spokane].[Shirley Gottbehuet]}\n"
+            + "{[Customers].[USA].[WA].[Spokane].[Stanley Marks]}\n"
+            + "{[Customers].[USA].[WA].[Spokane].[Suzanne Davis]}\n"
+            + "{[Customers].[USA].[WA].[Spokane].[Takiko Collins]}\n"
+            + "{[Customers].[USA].[WA].[Spokane].[Virginia Bell]}\n"
+            + "Axis #2:\n"
+            + "{[Time].[1997].[Q1].[1], [Store].[USA].[WA].[Spokane], [Gender].[F], [Marital Status].[M]}\n"
+            + "Row #0: 25\n"
+            + "Row #0: 17\n"
+            + "Row #0: 17\n"
+            + "Row #0: 30\n"
+            + "Row #0: 16\n"
+            + "Row #0: 9\n"
+            + "Row #0: 6\n"
+            + "Row #0: 12\n"
+            + "Row #0: 61\n"
+            + "Row #0: 15\n"
+            + "Row #0: 20\n"
+            + "Row #0: 27\n"
+            + "Row #0: 36\n"
+            + "Row #0: 22\n"
+            + "Row #0: 32\n"
+            + "Row #0: 2\n"
+            + "Row #0: 30\n"
+            + "Row #0: 19\n"
+            + "Row #0: 27\n"
+            + "Row #0: 3\n"
+            + "Row #0: 7\n");
+    }
 }
 // End NativeSetEvaluationTest.java

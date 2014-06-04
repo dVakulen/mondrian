@@ -13,12 +13,15 @@ package mondrian.rolap;
 
 import mondrian.mdx.MdxVisitorImpl;
 import mondrian.mdx.MemberExpr;
+import mondrian.mdx.ResolvedFunCall;
 import mondrian.olap.*;
 import mondrian.rolap.aggmatcher.AggStar;
 import mondrian.rolap.sql.*;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import javax.sql.DataSource;
@@ -38,14 +41,20 @@ public class RolapNativeFilter extends RolapNativeSet {
 
     static class FilterConstraint extends SetConstraint {
         Exp filterExpr;
+        boolean existing = false;
+        Map<String, String> preEvaluatedExpressions;
 
         public FilterConstraint(
             CrossJoinArg[] args,
             RolapEvaluator evaluator,
-            Exp filterExpr)
+            Exp filterExpr,
+            boolean existing,
+            Map<String, String> preEvaluatedExpressions)
         {
             super(args, evaluator, true);
             this.filterExpr = filterExpr;
+            this.existing = existing;
+            this.preEvaluatedExpressions = preEvaluatedExpressions;
         }
 
         /**
@@ -74,7 +83,7 @@ public class RolapNativeFilter extends RolapNativeSet {
                     }
                 });
             return mustJoin.get()
-                || (getEvaluator().isNonEmpty() && super.isJoinRequired());
+                || (getEvaluator().isNonEmpty() && super.isJoinRequired() || existing);
         }
 
         public void addConstraint(
@@ -85,7 +94,7 @@ public class RolapNativeFilter extends RolapNativeSet {
             // Use aggregate table to generate filter condition
             RolapNativeSql sql =
                 new RolapNativeSql(
-                    sqlQuery, aggStar, getEvaluator(), args[0].getLevel());
+                    sqlQuery, aggStar, getEvaluator(), args[0].getLevel(), preEvaluatedExpressions);
             String filterSql = sql.generateFilterCondition(filterExpr);
 
             // <NOOP> is used because there is a previous check to make sure filter conditions aren't null,
@@ -147,9 +156,20 @@ public class RolapNativeFilter extends RolapNativeSet {
             return null;
         }
 
+        // Determine if this Filter wraps an Existing function, of so apply
+        // the whole context to the filter.
+        boolean existing = false;
+        Exp arg0 = args[0];
+        if (args[0] instanceof ResolvedFunCall) {
+            if (((ResolvedFunCall)args[0]).getFunName().equalsIgnoreCase("existing")) {
+                existing = true;
+                arg0 = ((ResolvedFunCall)args[0]).getArg(0);
+            }
+        }
+
         // extract the set expression
         List<CrossJoinArg[]> allArgs =
-            crossJoinArgFactory().checkCrossJoinArg(evaluator, args[0]);
+            crossJoinArgFactory().checkCrossJoinArg(evaluator, arg0);
 
         // checkCrossJoinArg returns a list of CrossJoinArg arrays.  The first
         // array is the CrossJoin dimensions.  The second array, if any,
@@ -176,10 +196,14 @@ public class RolapNativeFilter extends RolapNativeSet {
         SqlQuery sqlQuery = SqlQuery.newQuery(ds, "NativeFilter");
         RolapNativeSql sql =
             new RolapNativeSql(
-                sqlQuery, null, evaluator, cjArgs[0].getLevel());
+                sqlQuery, null, evaluator, cjArgs[0].getLevel(), new HashMap<String, String>());
         final Exp filterExpr = args[1];
         String filterExprStr = sql.generateFilterCondition(filterExpr);
         if (filterExprStr == null) {
+            return null;
+        }
+        if (sql.addlContext.size() > 0 && sql.storedMeasureCount > 1) {
+            // cannot natively evaluate, multiple tuples are possibly at play here.
             return null;
         }
 
@@ -197,7 +221,18 @@ public class RolapNativeFilter extends RolapNativeSet {
 
         final int savepoint = evaluator.savepoint();
         try {
-            overrideContext(evaluator, cjArgs, sql.getStoredMeasure());
+            if (!existing) {
+                overrideContext(evaluator, cjArgs, sql.getStoredMeasure());
+            } else {
+                // exclude the crossjoin args from overriding the context
+                overrideContext(evaluator, new CrossJoinArg[]{}, sql.getStoredMeasure());
+            }
+
+            // TODO: Test potential issues, like reference members in crossjoin
+            for (Member m : sql.addlContext) {
+                evaluator.setContext(m);
+            }
+
             // Now construct the TupleConstraint that contains both the CJ
             // dimensions and the additional filter on them.
             CrossJoinArg[] combinedArgs = cjArgs;
@@ -211,7 +246,7 @@ public class RolapNativeFilter extends RolapNativeSet {
             }
 
             TupleConstraint constraint =
-                new FilterConstraint(combinedArgs, evaluator, filterExpr);
+                new FilterConstraint(combinedArgs, evaluator, filterExpr, existing, sql.preEvalExprs);
             return new SetEvaluator(cjArgs, schemaReader, constraint, sql.getStoredMeasure());
         } finally {
             evaluator.restore(savepoint);

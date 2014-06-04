@@ -11,6 +11,7 @@
 
 package mondrian.rolap;
 
+import mondrian.calc.TupleList;
 import mondrian.mdx.MemberExpr;
 import mondrian.mdx.ResolvedFunCall;
 import mondrian.olap.*;
@@ -107,21 +108,7 @@ public class SqlContextConstraint
                 return false;
             }
         }
-
-        // finally, we can't handle slicer axis members with different levels
-        // from the same dimension
-        return !hasMultipleLevelSlicer(context);
-    }
-
-    private static boolean hasMultipleLevelSlicer(Evaluator evaluator) {
-        Map<Dimension, Level> levels = new HashMap<Dimension, Level>();
-        for (Member member: ((RolapEvaluator) evaluator).getSlicerMembers()) {
-            Level before = levels.put(member.getDimension(), member.getLevel());
-            if (before != null && !before.equals(member.getLevel())) {
-                return true;
-            }
-        }
-        return false;
+        return true;
     }
 
     /**
@@ -236,7 +223,7 @@ public class SqlContextConstraint
 
         members.addAll(
             Arrays.asList(
-                SqlConstraintUtils.removeMultiPositionSlicerMembers(
+                SqlConstraintUtils.expandMultiPositionSlicerMembers(
                     evaluator.getMembers(), evaluator)));
 
         // Now we'll need to expand the aggregated members
@@ -246,6 +233,14 @@ public class SqlContextConstraint
                     members,
                     evaluator)));
         cacheKey.add(expandedMembers);
+
+        // TODO: If slicerTuple contains a calculated member in this
+        // query, it may be different in the next.  See
+        // CompoundSlicerTest.testTopCountWithAggregatedMemberCacheKey()
+        TupleList slicerTuples = evaluator.getSlicerTuples();
+        if (slicerTuples != null) {
+            cacheKey.add(slicerTuples);
+        }
 
         // Add restrictions imposed by Role based access filtering
         Map<Level, List<RolapMember>> roleMembers =

@@ -14,6 +14,8 @@ package mondrian.rolap;
 
 import mondrian.calc.Calc;
 import mondrian.calc.ParameterSlot;
+import mondrian.calc.TupleList;
+import mondrian.calc.impl.DelegatingTupleList;
 import mondrian.olap.*;
 import mondrian.olap.fun.FunUtil;
 import mondrian.rolap.CalculatedCellUtil.CellCalc;
@@ -21,7 +23,6 @@ import mondrian.rolap.CalculatedCellUtil.CellCalcReturn;
 import mondrian.server.Statement;
 import mondrian.spi.Dialect;
 import mondrian.util.Format;
-import mondrian.xmla.PropertyDefinition;
 
 import org.apache.log4j.Logger;
 
@@ -96,6 +97,11 @@ public class RolapEvaluator implements Evaluator {
     protected final List<List<List<Member>>> aggregationLists;
 
     private final List<Member> slicerMembers;
+    // contains a list of slicer tuples
+    private TupleList slicerTuples;
+    // extra info on slicer tuples (temp)
+    private boolean disjointSlicerTuple;
+    private boolean multiLevelSlicerTuple;
     private boolean nativeEnabled;
     private Member[] nonAllMembers;
     private int commandCount;
@@ -155,7 +161,9 @@ public class RolapEvaluator implements Evaluator {
         calculations = parent.calculations.clone();
         calculationCount = parent.calculationCount;
         slicerMembers = new ArrayList<Member>(parent.slicerMembers);
-
+        slicerTuples = parent.slicerTuples;
+        disjointSlicerTuple = parent.disjointSlicerTuple;
+        multiLevelSlicerTuple = parent.multiLevelSlicerTuple;
         commands = new Object[10];
         commands[0] = Command.SAVEPOINT; // sentinel
         commandCount = 1;
@@ -497,6 +505,92 @@ public class RolapEvaluator implements Evaluator {
      */
     public final List<Member> getSlicerMembers() {
         return slicerMembers;
+    }
+
+    /**
+     * Sets the slicer tuple object, used later by native evaluation and
+     * non-empty crossjoins.
+     *
+     * @param tuples
+     */
+    public final void setSlicerTuples(TupleList tuples) {
+        slicerTuples = tuples;
+        // XXX: TEMPORARY, change this!
+        if (tuples != null) {
+            disjointSlicerTuple = SqlConstraintUtils.isDisjointTuple(tuples);
+            multiLevelSlicerTuple =
+              SqlConstraintUtils.hasMultipleLevelSlicer(this);
+        }
+        else {
+            disjointSlicerTuple = false;
+            multiLevelSlicerTuple = false;
+        }
+    }
+
+    /**
+     * Return the list of compound slicer tuples
+     * @param tuples
+     */
+    public final TupleList getSlicerTuples() {
+        return slicerTuples;
+    }
+
+    public boolean isDisjointSlicerTuple() {
+        return disjointSlicerTuple;
+    }
+
+    public boolean isMultiLevelSlicerTuple() {
+        return multiLevelSlicerTuple;
+    }
+
+    /**
+     * Returns an optimized list of tuples related to the slicer based on the current evaluator.
+     * This function removes overridden compound slicer members from the tuple list.
+     *
+     * @return optimized slicer tuple list
+     */
+    public final TupleList getOptimizedSlicerTuples() {
+        // removes members in the tuple list that are no longer compound.
+        // for each member in the tuple, see if the evaluator is still set to the
+        // current member
+        if (slicerTuples == null) return null;
+        int toRemove = 0;
+        boolean removeMember[] = new boolean[slicerTuples.getArity()];
+        for (int i = 0; i < slicerTuples.get( 0 ).size(); i++) {
+            Hierarchy h = slicerTuples.get(0).get(i).getHierarchy();
+            if (!(getContext(h) instanceof
+                RolapResult.CompoundSlicerRolapMember)
+                && (!getExpanding().getHierarchy().equals(h)
+                || !(getExpanding() instanceof
+                RolapResult.CompoundSlicerRolapMember)))
+            {
+                toRemove++;
+                removeMember[i] = true;
+            }
+        }
+        if (toRemove == slicerTuples.getArity()) {
+          return null;
+        }
+        if (toRemove > 0) {
+            // collapse tuple
+            final Set<List<Member>> processedTuples =
+                new LinkedHashSet<List<Member>>(slicerTuples.size());
+            for (List<Member> tuple : slicerTuples) {
+                List<Member> tupleCopy = new ArrayList<Member>(slicerTuples.size() - toRemove);
+                for (int j = 0; j < tuple.size(); j++) {
+                    final Member member = tuple.get(j);
+                    if (!removeMember[j]) {
+                        tupleCopy.add( member );
+                    }
+                }
+                processedTuples.add(tupleCopy);
+            }
+            return new DelegatingTupleList(
+                slicerTuples.size() - toRemove,
+                new ArrayList<List<Member>>(
+                    processedTuples));
+        }
+        return slicerTuples;
     }
 
     public final Member setContext(Member member) {
