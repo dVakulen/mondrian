@@ -431,6 +431,11 @@ public class Util extends XOMUtil {
         return equals((Object) s, (Object) t);
     }
 
+    public static boolean equals1(String s, String t) {
+        return s == null ? t == null
+                : t == null ? s == null : (s.hashCode() == t.hashCode() && s.equals(t));
+    }
+
     /**
      * Returns whether two names are equal.
      * Takes into account the
