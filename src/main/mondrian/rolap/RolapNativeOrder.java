@@ -24,41 +24,39 @@ import java.util.Map;
 import javax.sql.DataSource;
 
 /**
- * Computes a TopCount in SQL.
+ * Computes Order() in SQL.
  *
- * @author av
- * @since Nov 21, 2005
-  */
-public class RolapNativeTopCount extends RolapNativeSet {
+ * Note that this utilizes the same approach as Native TopCount(), by defining an order by
+ * clause based on the specified measure 
+ *
+ */
+public class RolapNativeOrder extends RolapNativeSet {
 
-    public RolapNativeTopCount() {
+    public RolapNativeOrder() {
         super.setEnabled(
-            MondrianProperties.instance().EnableNativeTopCount.get());
+            MondrianProperties.instance().EnableNativeOrder.get());
     }
 
-    static class TopCountConstraint extends SetConstraint {
+    static class OrderConstraint extends SetConstraint {
         Exp orderByExpr;
         boolean ascending;
-        Integer topCount;
         Map<String, String> preEval;
 
-        public TopCountConstraint(
-            int count,
+        public OrderConstraint(
             CrossJoinArg[] args, RolapEvaluator evaluator,
             Exp orderByExpr, boolean ascending, Map<String, String> preEval)
         {
             super(args, evaluator, true);
             this.orderByExpr = orderByExpr;
             this.ascending = ascending;
-            this.topCount = new Integer(count);
             this.preEval = preEval;
         }
 
         /**
          * {@inheritDoc}
          *
-         * <p>TopCount always needs to join the fact table because we want to
-         * evaluate the top count expression which involves a fact.
+         * <p>Order always needs to join the fact table because we want to
+         * evaluate the order expression which involves a fact.
          */
         protected boolean isJoinRequired() {
             return true;
@@ -111,8 +109,6 @@ public class RolapNativeTopCount extends RolapNativeSet {
                 key.add(orderByExpr.toString());
             }
             key.add(ascending);
-            key.add(topCount);
-
             if (this.getEvaluator() instanceof RolapEvaluator) {
                 key.add(
                     ((RolapEvaluator)this.getEvaluator())
@@ -131,24 +127,20 @@ public class RolapNativeTopCount extends RolapNativeSet {
         FunDef fun,
         Exp[] args)
     {
-        boolean ascending;
+        boolean ascending = true;
 
         if (!isEnabled()) {
             return null;
         }
-        if (!TopCountConstraint.isValidContext(
+        if (!OrderConstraint.isValidContext(
                 evaluator, false, new Level[]{}, restrictMemberTypes()))
         {
             return null;
         }
 
-        // is this "TopCount(<set>, <count>, [<numeric expr>])"
+        // is this "Order(<set>, [<numeric expr>, <string expr>], { ASC | DESC | BASC | BDESC })"
         String funName = fun.getName();
-        if ("TopCount".equalsIgnoreCase(funName)) {
-            ascending = false;
-        } else if ("BottomCount".equalsIgnoreCase(funName)) {
-            ascending = true;
-        } else {
+        if (!"Order".equalsIgnoreCase(funName)) {
             return null;
         }
         if (args.length < 2 || args.length > 3) {
@@ -172,11 +164,21 @@ public class RolapNativeTopCount extends RolapNativeSet {
             return null;
         }
 
-        // extract count
-        if (!(args[1] instanceof Literal)) {
-            return null;
+        // Extract Order
+        if (args.length == 3) {
+            if (!(args[2] instanceof Literal)) {
+                return null;
+            }
+            
+            String val = ((Literal) args[2]).getValue().toString();
+            if (val.equals( "ASC") || val.equals("BASC" )) {
+                ascending = true;
+            } else if (val.equals("DESC") || val.equals("BDESC")) {
+                ascending = false;
+            } else {
+                return null;
+            }
         }
-        int count = ((Literal) args[1]).getIntValue();
 
         // extract "order by" expression
         SchemaReader schemaReader = evaluator.getSchemaReader();
@@ -186,14 +188,14 @@ public class RolapNativeTopCount extends RolapNativeSet {
         // Need to generate top count order by to determine whether
         // or not it can be created. The top count
         // could change to use an aggregate table later in evaulation
-        SqlQuery sqlQuery = SqlQuery.newQuery(ds, "NativeTopCount");
+        SqlQuery sqlQuery = SqlQuery.newQuery(ds, "NativeOrder");
         RolapNativeSql sql =
             new RolapNativeSql(
                 sqlQuery, null, evaluator, null, new HashMap<String, String>());
         Exp orderByExpr = null;
-        if (args.length == 3) {
-            orderByExpr = args[2];
-            String orderBySQL = sql.generateTopCountOrderBy(args[2]);
+        if (args.length >= 2) {
+            orderByExpr = args[1];
+            String orderBySQL = sql.generateTopCountOrderBy(args[1]);
             if (orderBySQL == null) {
                 return null;
             }
@@ -204,7 +206,7 @@ public class RolapNativeTopCount extends RolapNativeSet {
             return null;
         }
 
-        LOGGER.debug("using native topcount");
+        LOGGER.debug("using native order");
         final int savepoint = evaluator.savepoint();
         try {
             overrideContext(evaluator, cjArgs, sql.getStoredMeasure());
@@ -227,11 +229,10 @@ public class RolapNativeTopCount extends RolapNativeSet {
                 combinedArgs = cjArgs;
             }
             TupleConstraint constraint =
-                new TopCountConstraint(
-                    count, combinedArgs, evaluator, orderByExpr, ascending, sql.preEvalExprs);
+                new OrderConstraint(
+                    combinedArgs, evaluator, orderByExpr, ascending, sql.preEvalExprs);
             SetEvaluator sev =
                 new SetEvaluator(cjArgs, schemaReader, constraint, sql.getStoredMeasure());
-            sev.setMaxRows(count);
             return sev;
         } finally {
             evaluator.restore(savepoint);
@@ -239,4 +240,4 @@ public class RolapNativeTopCount extends RolapNativeSet {
     }
 }
 
-// End RolapNativeTopCount.java
+// End RolapNativeOrder.java

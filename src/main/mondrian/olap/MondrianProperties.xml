@@ -833,6 +833,26 @@ level.members and member descendants will be computed in SQL.</p>
         <Default>true</Default>
     </PropertyDefinition>
     <PropertyDefinition>
+        <Name>EnableNativeOrder</Name>
+        <Path>mondrian.native.order.enable</Path>
+        <Category>SQL generation</Category>
+        <Description>
+If enabled some Order will be computed in SQL.
+        </Description>
+        <Type>boolean</Type>
+        <Default>true</Default>
+    </PropertyDefinition>
+    <PropertyDefinition>
+        <Name>EnableNativeExists</Name>
+        <Path>mondrian.native.exists.enable</Path>
+        <Category>SQL generation</Category>
+        <Description>
+<p>If enabled some EXISTS() calls will be computed in SQL.</p>
+        </Description>
+        <Type>boolean</Type>
+        <Default>true</Default>
+    </PropertyDefinition>
+    <PropertyDefinition>
         <Name>AlertNativeEvaluationUnsupported</Name>
         <Path>mondrian.native.unsupported.alert</Path>
         <Category>SQL generation</Category>
@@ -1023,6 +1043,17 @@ Defaults to 100.</p>
         </Description>
         <Type>int</Type>
         <Default>100</Default>
+    </PropertyDefinition>
+    <PropertyDefinition>
+        <Name>SegmentCacheManagerNumberNativeThreads</Name>
+        <Path>mondrian.rolap.maxNativeThreads</Path>
+        <Description>
+<p>Maximum number of threads per Mondrian server instance that
+are used to run Native SQL queries when populating native member cache.
+Defaults to 50.</p>
+        </Description>
+        <Type>int</Type>
+        <Default>20</Default>
     </PropertyDefinition>
     <PropertyDefinition>
         <Name>SegmentCacheManagerNumberCacheThreads</Name>
