@@ -115,7 +115,7 @@ public class RolapCubeMember
         }
         if (o instanceof Member) {
             assert !Bug.BugSegregateRolapCubeMemberFixed;
-            return Util.equals1(getUniqueName(), ((Member)o).getUniqueName());
+            return getUniqueName().equals(((Member) o).getUniqueName());
         }
         return false;
     }

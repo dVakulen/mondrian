@@ -22,7 +22,6 @@ import mondrian.rolap.sql.SqlQuery;
 import mondrian.spi.Dialect;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -904,17 +903,11 @@ public class RolapNativeSql {
      * This compiler attempts to pre-evaluate static values before pushing down to SQL
      */
     class PreEvalSqlCompiler implements SqlCompiler {
-        private final Set<String> nativeSingleArg =
-            new HashSet<String>(Arrays.asList("val", "round", "right", "left"));
-        private final Set<String> nativeDoubleArg =
-                new HashSet<String>(Arrays.asList("round"));
         public boolean supportsExp( Exp exp ) {
             if (exp instanceof FunCall) {
                 FunCall funcall = (FunCall) exp;
-                if (nativeSingleArg.contains(funcall.getFunName().toLowerCase()) && funcall.getArgCount() == 1) {
+                if (funcall.getFunName().equalsIgnoreCase("val") && funcall.getArgCount() == 1) {
                     return supportsExp(funcall.getArg(0));
-                } else if (nativeDoubleArg.contains(funcall.getFunName().toLowerCase()) && funcall.getArgCount() == 2) {
-                    return supportsExp(funcall.getArg(0)) && (funcall.getArg(1) instanceof Literal);
                 } else if (funcall.getFunName().equalsIgnoreCase("strtomember") && funcall.getArgCount() == 1) {
                     return supportsExp(funcall.getArg(0));
                 } else if (funcall.getFunName().equalsIgnoreCase("CurrentMember")) {
