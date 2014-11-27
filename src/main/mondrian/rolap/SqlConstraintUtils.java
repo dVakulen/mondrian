@@ -450,6 +450,7 @@ public class SqlConstraintUtils {
                 column.getTable().addToFrom(sqlQuery, false, true);
                 sqlQuery.subqueries.remove(column.getTable().getSubQueryAlias());
                 sqlQuery.subwhereExpr.remove(column.getTable().getSubQueryAlias());
+                sqlQuery.subwhereExprKeys.remove(column.getTable().getSubQueryAlias());
                 subqueryMap.put(column.getTable().getSubQueryAlias(), subSqlQuery);
             } else {
                 column.getTable().addToFrom(sqlQuery, false, true);
@@ -1696,6 +1697,27 @@ public class SqlConstraintUtils {
         if (columnValue == RolapUtil.sqlNullValue) {
             return columnString + " is " + RolapUtil.sqlNullLiteral;
         } else {
+            if (datatype == Dialect.Datatype.Integer && columnValue != null) {
+                try {
+                    // if this value isn't parsable as a numeric, then we
+                    // shouldn't attempt to push it down to SQL.
+                    Long.parseLong(columnValue.toString());
+                } catch (Exception e) {
+                    // the value is not parsable, convert to false
+                    // for SQL generation.
+                    return "(1 = 0)";
+                }
+            } else if (datatype == Dialect.Datatype.Numeric && columnValue != null) {
+                try {
+                    // if this value isn't parsable as a numeric, then we
+                    // shouldn't attempt to push it down to SQL.
+                    Double.parseDouble(columnValue.toString());
+                } catch (Exception e) {
+                    // the value is not parsable, convert to false
+                    // for SQL generation.
+                    return "(1 = 0)";
+                }
+            }
             final StringBuilder buf = new StringBuilder();
             buf.append(columnString);
             buf.append(" = ");
