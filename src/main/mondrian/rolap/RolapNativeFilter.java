@@ -253,7 +253,6 @@ public class RolapNativeFilter extends RolapNativeSet {
                         evaluator.setContext(m.getLevel().getHierarchy().getDefaultMember());
                     }
                 }
-                evaluator.setInlineSubqueryNecessary(true);
 
                 // Now construct the TupleConstraint that contains both the CJ
                 // dimensions and the additional filter on them.
@@ -284,7 +283,6 @@ public class RolapNativeFilter extends RolapNativeSet {
                 for (Member m : sql.addlContext) {
                     evaluator.setContext(m);
                 }
-                evaluator.setInlineSubqueryNecessary(true);
                 SetConstraint constraint =
                     new FilterConstraint(crossjoinargs, evaluator, filterExpr, existing, sql.preEvalExprs, firstCrossjoinLevel, parentConstraint);
                 LOGGER.debug("using native filter");
@@ -301,6 +299,12 @@ public class RolapNativeFilter extends RolapNativeSet {
      * with member constraints to get the right results.<br/>
      * A proper solution would involve changing how joins can be handled in
      * {@link SqlConstraintUtils}, until then we better bail out.
+     *
+     * TODO: If there are only args related to the current filter (for
+     * instance parent member ref for children) this still causes issues
+     * because SqlConstraintUtils forces a join when adding the member
+     * constraint.  We'll need to add those constraints differently vs.
+     * through the fact table.
      */
     private static boolean isValidFilterConstraint(
       SetConstraint filterConstraint,

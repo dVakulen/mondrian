@@ -1058,14 +1058,7 @@ public class SqlTupleReader implements TupleReader {
         Evaluator evaluator = getEvaluator(constraint);
         // Certain Native Evaluations require Many to Many dimensions
         // to generate SQL in a particular way.
-        boolean subqueriesNecessary = false;
-        if (evaluator != null
-            && evaluator instanceof RolapEvaluator
-            && ((RolapEvaluator)evaluator).isInlineSubqueryNecessary())
-        {
-            subqueriesNecessary = true;
-            sqlQuery.setEnableDistinctSubquery(true);
-        }
+        sqlQuery.setEnableDistinctSubquery(true);
         AggStar aggStar = chooseAggStar(constraint, evaluator, baseCube);
 
         // add the selects for all levels to fetch
@@ -1082,9 +1075,10 @@ public class SqlTupleReader implements TupleReader {
                     keyOnly);
             }
         }
-        if (subqueriesNecessary) {
-            sqlQuery.correlatedSubquery = true;
-        }
+
+        // inform the query to generate correlated subqueries
+        // vs. subqueries in from clause
+        sqlQuery.correlatedSubquery = true;
 
         // this is the only time we need to do a correlated subquery.
         constraint.addConstraint(sqlQuery, baseCube, aggStar);
@@ -1499,6 +1493,11 @@ public class SqlTupleReader implements TupleReader {
         for (TargetBase target : targets) {
             RolapLevel level = target.level;
             if (!level.isAll()) {
+                // there is a chance that this path is used by existing non-native eval
+                // which uses RolapLevel vs. RolapCubeLevel to avoid fact joins
+                if (!(level instanceof RolapCubeLevel)) {
+                  return null;
+                }
                 RolapStar.Column column =
                     ((RolapCubeLevel)level).getBaseStarKeyColumn(baseCube);
                 if (column != null) {
@@ -1514,6 +1513,12 @@ public class SqlTupleReader implements TupleReader {
         measureBitKey.set(bitPosition);
 
         if (constraint instanceof RolapNativeSet.SetConstraint) {
+            // Due to later logic selecting members from agg tables,
+            // we skip agg table lookup if the constraint believes there
+            // is no reason to join to the fact table.
+            if (((RolapNativeSet.SetConstraint) constraint).skipAggTable()) {
+                return null;
+            }
             ((RolapNativeSet.SetConstraint) constraint)
                 .constrainExtraLevels(baseCube, levelBitKey);
         }

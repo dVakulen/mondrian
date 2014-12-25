@@ -118,15 +118,14 @@ public class SqlConstraintUtils {
             String expr = getColumnExpr(sqlQuery, aggStar, column);
             String subquery = null;
             // TODO: Support Agg Tables for M2M scenario
-            if (aggStar == null
-                && sqlQuery.getEnableDistinctSubquery()) {
+            if (sqlQuery.getEnableDistinctSubquery()) {
               subquery = column.getTable().getSubQueryAlias();
             }
 
             if ((RolapUtil.mdxNullLiteral().equalsIgnoreCase(value))
                 || (value.equalsIgnoreCase(RolapUtil.sqlNullValue.toString())))
             {
-                sqlQuery.addWhere(expr, " is ", RolapUtil.sqlNullLiteral);
+                sqlQuery.addWhere(expr, " is ", RolapUtil.sqlNullLiteral, subquery);
             } else {
                 if (column.getDatatype().isNumeric()) {
                     // make sure it can be parsed
@@ -258,11 +257,6 @@ public class SqlConstraintUtils {
                 restrictMemberTypes,
                 baseCube,
                 evaluator);
-    }
-
-    public static boolean useTupleSlicer(RolapEvaluator evaluator) {
-        return evaluator.isDisjointSlicerTuple()
-            || evaluator.isMultiLevelSlicerTuple();
     }
 
     /**
@@ -506,9 +500,9 @@ public class SqlConstraintUtils {
         final String expr;
         if (aggStar != null) {
             int bitPos = column.getBitPosition();
+            // TODO: Support Join Optimization in Agg Tables
             AggStar.Table.Column aggColumn = aggStar.lookupColumn(bitPos);
             AggStar.Table table = aggColumn.getTable();
-            // TODO: Support Agg Tables
             table.addToFrom(sqlQuery, false, true);
             expr = aggColumn.generateExprString(sqlQuery);
         } else {
@@ -642,7 +636,15 @@ public class SqlConstraintUtils {
                     (RolapCubeLevel) entry.getKey(),
                     false);
                 // add constraints
-                sqlQuery.addWhere(where);
+                RolapStar.Column column = null;
+                if (entry.getKey() instanceof RolapCubeLevel) {
+                    column = ((RolapCubeLevel)entry.getKey()).getBaseStarKeyColumn(baseCube);
+                }
+                String subquery = null;
+                if (column != null && sqlQuery.getEnableDistinctSubquery()) {
+                    subquery = column.getTable().getSubQueryAlias();
+                }
+                sqlQuery.addWhere(where, subquery);
             }
         }
     }
@@ -756,7 +758,7 @@ public class SqlConstraintUtils {
                 // if the slicer is disjoint, it handles the SQL generation in
                 // a different way
                 if (!disjointSlicerTuples) {
-                    listOfMembers.add(
+                    listOfMembers.addAll(
                         replaceCompoundSlicerPlaceholder(
                             member,
                             (RolapEvaluator) evaluator));
@@ -779,16 +781,20 @@ public class SqlConstraintUtils {
         return members;
     }
 
-    private static Member replaceCompoundSlicerPlaceholder(
+    private static List<Member> replaceCompoundSlicerPlaceholder(
         Member member,
         RolapEvaluator evaluator)
 {
+        List<Member> members = new ArrayList<Member>();
         for (Member slicerMember : evaluator.getSlicerMembers()) {
             if (slicerMember.getDimension().equals(member.getDimension())) {
-                return slicerMember;
+                members.add(slicerMember);
             }
         }
-        return member;
+        if (members.size() == 0) {
+            members.add(member);
+        }
+        return members;
     }
 
     public static List<Member> expandExpressions(
@@ -1207,9 +1213,18 @@ public class SqlConstraintUtils {
         }
 
         if (condition.length() > 1) {
+            RolapStar.Column column = null;
+            String subquery = null;
+            // TODO: Support Agg Tables for M2M scenario
+            if (memberLevel instanceof RolapCubeLevel) {
+                column = ((RolapCubeLevel)memberLevel).getBaseStarKeyColumn(baseCube);
+            }
+            if (column != null && sqlQuery.getEnableDistinctSubquery()) {
+                subquery = column.getTable().getSubQueryAlias();
+            }
             // condition is not empty
             condition += ")";
-            sqlQuery.addWhere(condition);
+            sqlQuery.addWhere(condition, subquery);
         }
     }
 
@@ -2062,6 +2077,7 @@ public class SqlConstraintUtils {
                             "AggStar " + aggStar + " has no column for "
                             + column + " (bitPos " + bitPos + ")");
                     }
+                    // TODO: Optimize AggTable Column
                     AggStar.Table table = aggColumn.getTable();
                     table.addToFrom(sqlQuery, false, true);
                     q = aggColumn.generateExprString(sqlQuery);
