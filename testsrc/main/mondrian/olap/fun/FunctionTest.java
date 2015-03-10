@@ -13315,6 +13315,22 @@ Intel platforms):
             + "Row #0: 14\n");
     }
 
+    public void testExistingWithCompoundSlicer() {
+        propSaver.set(MondrianProperties.instance().EnableNativeExisting, false);
+        String mdx = "WITH MEMBER [Measures].[Count Existing]"
+            + " AS Count(existing [Time].[Month].Members)\n"
+            + "SELECT {[Measures].[Count Existing]} ON 0\n"
+            + "FROM [Sales]\n"
+            + "WHERE {[Time].[1997].[Q2], [Time].[1997].[Q3]}";
+        assertQueryReturns(mdx,
+            "Axis #0:\n"
+            + "{[Time].[1997].[Q2]}\n"
+            + "{[Time].[1997].[Q3]}\n"
+            + "Axis #1:\n"
+            + "{[Measures].[Count Existing]}\n"
+            + "Row #0: 6\n");
+    }
+
     public void testNonEmptyFunSlicer() {
         assertQueryReturns(
             "SELECT\n"

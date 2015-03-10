@@ -94,6 +94,10 @@ public class ExistingFunDef extends FunDefBase {
                     return (TupleList)
                         nativeEvaluator.execute(ResultStyle.LIST);
                 } else {
+                    if (((RolapEvaluator)evaluator).isDisjointSlicerTuple()) {
+                        //TODO: disjoint slicer tuple case needs to be implemented
+                        LOGGER.warn("Disjoint slicer tuple support is not implemented");
+                    }
                     TupleIterable setTuples =
                         setArg.evaluateIterable(evaluator);
                     TupleList result =
