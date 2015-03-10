@@ -4165,33 +4165,38 @@ public class NativeSetEvaluationTest extends BatchTestCase {
             + "Axis #1:\n"
             + "{[Measures].[Count Existing]}\n"
             + "Row #0: 6\n");
-        final boolean useAgg =
-            MondrianProperties.instance().UseAggregates.get()
-            && MondrianProperties.instance().ReadAggregates.get();
-        if (!useAgg && MondrianProperties.instance().EnableNativeExisting.get()) {
-            propSaver.set(MondrianProperties.instance().GenerateFormattedSql, true);
-            String mySql =
-                "select\n" +
-                "    COUNT(*)\n" +
-                "from\n" +
-                "    (select\n" +
-                "    `time_by_day`.`the_year` as `c0`,\n" +
-                "    `time_by_day`.`quarter` as `c1`,\n" +
-                "    `time_by_day`.`month_of_year` as `c2`\n" +
-                "from\n" +
-                "    `time_by_day` as `time_by_day`,\n" +
-                "    `sales_fact_1997` as `sales_fact_1997`\n" +
-                "where\n" +
-                "    `sales_fact_1997`.`time_id` = `time_by_day`.`time_id`\n" +
-                "and\n" +
-                "    (`time_by_day`.`quarter` in ('Q2', 'Q3') and `time_by_day`.`the_year` = 1997)\n" +
-                "group by\n" +
-                "    `time_by_day`.`the_year`,\n" +
-                "    `time_by_day`.`quarter`,\n" +
-                "    `time_by_day`.`month_of_year`) as `countQuery`";
-            SqlPattern mysqlPattern =
-                new SqlPattern(Dialect.DatabaseProduct.MYSQL, mySql, null);
-            assertQuerySql(mdx, new SqlPattern[]{ mysqlPattern });
+
+        if (propSaver.properties.EnableNativeExisting.get()) {
+            verifySameNativeAndNot(mdx, "Existing with compound slicer", getTestContext());
+
+            final boolean useAgg =
+                propSaver.properties.UseAggregates.get()
+                && propSaver.properties.ReadAggregates.get();
+            if (!useAgg) {
+                propSaver.set(propSaver.properties.GenerateFormattedSql, true);
+                String mySql =
+                    "select\n"
+                    + "    COUNT(*)\n"
+                    + "from\n"
+                    + "    (select\n"
+                    + "    `time_by_day`.`the_year` as `c0`,\n"
+                    + "    `time_by_day`.`quarter` as `c1`,\n"
+                    + "    `time_by_day`.`month_of_year` as `c2`\n"
+                    + "from\n"
+                    + "    `time_by_day` as `time_by_day`,\n"
+                    + "    `sales_fact_1997` as `sales_fact_1997`\n"
+                    + "where\n"
+                    + "    `sales_fact_1997`.`time_id` = `time_by_day`.`time_id`\n"
+                    + "and\n"
+                    + "    (`time_by_day`.`quarter` in ('Q2', 'Q3') and `time_by_day`.`the_year` = 1997)\n"
+                    + "group by\n"
+                    + "    `time_by_day`.`the_year`,\n"
+                    + "    `time_by_day`.`quarter`,\n"
+                    + "    `time_by_day`.`month_of_year`) as `countQuery`";
+                SqlPattern mysqlPattern =
+                    new SqlPattern(Dialect.DatabaseProduct.MYSQL, mySql, null);
+                assertQuerySql(mdx, new SqlPattern[]{ mysqlPattern });
+            }
         }
     }
 
