@@ -422,9 +422,8 @@ public class DefaultXmlaRequest
                 HSB_BAD_STATEMENT_FAULT_FS,
                 Util.newError(buf.toString()));
         }
-
-        statement = XmlaUtil.textInElement(childElems[0]).replaceAll("\\r", "").trim();
-        statement = StringUtils.strip(statement, "; \n\t");
+        statement = XmlaUtil.textInElement(childElems[0]).replaceAll("\\r", "");
+        statement = statement.replaceAll("[;\\s]+$", "");
         drillthrough = statement.toUpperCase().contains("DRILLTHROUGH");
     }
 
