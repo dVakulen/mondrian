@@ -20,7 +20,6 @@ import mondrian.olap.type.StringType;
 import mondrian.olap.type.Type;
 import mondrian.xmla.*;
 
-import org.apache.commons.lang.StringUtils;
 import org.apache.log4j.Logger;
 
 import org.w3c.dom.*;

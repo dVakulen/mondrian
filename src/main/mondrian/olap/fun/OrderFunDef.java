@@ -127,20 +127,19 @@ class OrderFunDef extends FunDefBase {
     }
 
     private static NativeEvaluator getNativeEvaluator(
-            Evaluator evaluator,
-            ResolvedFunCall call,
-            Calc calc)
+        Evaluator evaluator,
+        ResolvedFunCall call,
+        Calc calc)
     {
         SchemaReader schemaReader = evaluator.getSchemaReader();
         RolapEvaluator manyToManyEval =
-                ManyToManyUtil.getManyToManyEvaluator(
-                        (RolapEvaluator)evaluator);
+            ManyToManyUtil.getManyToManyEvaluator((RolapEvaluator)evaluator);
         NativeEvaluator nativeEvaluator =
-                schemaReader.getNativeSetEvaluator(
-                        call.getFunDef(),
-                        call.getArgs(),
-                        manyToManyEval,
-                        calc);
+            schemaReader.getNativeSetEvaluator(
+                call.getFunDef(),
+                call.getArgs(),
+                manyToManyEval,
+                calc);
         return nativeEvaluator;
     }
 

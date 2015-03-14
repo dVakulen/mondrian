@@ -202,7 +202,7 @@ public class RolapNativeOrder extends RolapNativeSet {
 
             // extract the set expression
             List<CrossJoinArg[]> allArgs =
-                    crossJoinArgFactory().checkCrossJoinArg(evaluator, args[0]);
+                crossJoinArgFactory().checkCrossJoinArg(evaluator, args[0]);
 
             // checkCrossJoinArg returns a list of CrossJoinArg arrays.  The first
             // array is the CrossJoin dimensions.  The second array, if any,
