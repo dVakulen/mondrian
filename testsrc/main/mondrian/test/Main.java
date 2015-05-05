@@ -34,6 +34,7 @@ import mondrian.util.*;
 import mondrian.xmla.*;
 import mondrian.xmla.impl.DynamicDatasourceXmlaServletTest;
 import mondrian.xmla.test.XmlaTest;
+
 import junit.framework.Test;
 import junit.framework.*;
 
@@ -342,6 +343,7 @@ public class Main extends TestSuite {
             addTest(suite, IdBatchResolverTest.class);
             addTest(suite, MemberCacheHelperTest.class);
             addTest(suite, EffectiveMemberCacheTest.class);
+            addTest(suite, SqlStatementTest.class);
 
             boolean testNonEmpty = isRunOnce();
             if (!MondrianProperties.instance().EnableNativeNonEmpty.get()) {
